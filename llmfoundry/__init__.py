@@ -48,6 +48,7 @@ try:
     from llmfoundry.models.mpt import (ComposerMPTCausalLM, MPTConfig,
                                        MPTForCausalLM, MPTModel,
                                        MPTPreTrainedModel)
+    from llmfoundry.models.ssm import (ComposerMPSSMCausalLM,MPSSMConfig)
     from llmfoundry.tokenizers import TiktokenTokenizerWrapper
     if is_flash_v1_installed():
         transformers.utils.is_flash_attn_available = lambda: False
@@ -73,10 +74,12 @@ __all__ = [
     'MPTMLP',
     'build_ffn',
     'MPTConfig',
+    'MPSSMConfig',
     'MPTPreTrainedModel',
     'MPTModel',
     'MPTForCausalLM',
     'ComposerMPTCausalLM',
+    'ComposerMPSSMCausalLM',
     'ComposerHFCausalLM',
     'ComposerHFPrefixLM',
     'ComposerHFT5',

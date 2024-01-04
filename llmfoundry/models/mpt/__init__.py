@@ -11,5 +11,6 @@ __all__ = [
     'MPTModel',
     'MPTForCausalLM',
     'ComposerMPTCausalLM',
-    'MPTConfig',
+    'MPTConfig'
+    
 ]

@@ -22,20 +22,40 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from llmfoundry.models.mpt.configuration_mpt import MPTConfig
 
-from mamba.mamba_ssm.modules.mamba_simple import Block as MambaBlock
-from mamba.mamba_ssm.models.mixer_seq_simple import MambaLMHeadModel, _init_weights
+from mamba_ssm.modules.mamba_simple import Block as MambaBlock
+from mamba_ssm.models.mixer_seq_simple import MambaLMHeadModel, _init_weights
+from mamba_ssm.models.config_mamba import MambaConfig
 from llmfoundry.models.layers.custom_embedding import SharedEmbedding
-
+from transformers import PretrainedConfig
 import logging
 
 log = logging.getLogger(__name__)
 
 
-class MPSSMConfig(MPTConfig):
-    def __init__(self, config:MPTConfig=MPTConfig()):
-        super().__init__(**(config.__dict__))
-        self.residual_in_fp32= False
-        self.pad_vocab_size_multiple=1
+class MPSSMConfig(PretrainedConfig):
+    def __init__(self,  d_model: int = 2560,
+            n_layer: int = 64,
+            vocab_size: int = 50277,
+            ssm_cfg: dict ={},
+            rms_norm: bool = True,
+            residual_in_fp32: bool = True,
+            fused_add_norm: bool = True,
+            pad_vocab_size_multiple: int = 8,
+            init_device: str='meta',
+            **kwargs: Any):
+        super().__init__(
+            **kwargs,
+        )
+        self.d_model=d_model
+        self.n_layer=n_layer
+        self.vocab_size=vocab_size
+        self.ssm_cfg=ssm_cfg
+        self.rms_norm=rms_norm
+        self.residual_in_fp32=residual_in_fp32
+        self.fused_add_norm=fused_add_norm
+        self.pad_vocab_size_multiple=pad_vocab_size_multiple
+        self.init_device=init_device
+        
 
 class MPTPreTrainedSSMModel(PreTrainedModel):
     config_class = MPSSMConfig
@@ -74,7 +94,6 @@ class MPSSMForCausalLM(MPTPreTrainedSSMModel):
                 config.init_device = 'cpu'
             else:
                 config.init_device = 'meta'
-
 
         self.transformer: MPT_MambaLMHeadModel = MPT_MambaLMHeadModel(
             config=config,
@@ -192,7 +211,7 @@ class MPSSMForCausalLM(MPTPreTrainedSSMModel):
     # Param Initialization, needed for device='meta' fast initialization
     def param_init_fn(self, module: nn.Module) -> None:
         _init_weights(module=module,
-                    n_layers=self.config.n_layers)
+                    n_layer=self.config.n_layer)
         
 
     # FSDP Wrap function
@@ -236,8 +255,9 @@ class ComposerMPSSMCausalLM(HuggingFaceModel):
     ):
         resolved_om_model_config = om.to_container(om_model_config,
                                                    resolve=True)
-        hf_config = MPTConfig.from_dict(resolved_om_model_config)
-        model = MPSSMForCausalLM(hf_config)
+        # hf_config = MPTConfig.from_dict(resolved_om_model_config)
+        
+        model = MPSSMForCausalLM(MPSSMConfig(**resolved_om_model_config))
 
         use_train_metrics = om_model_config.get('use_train_metrics', True)
         train_metrics = [LanguageCrossEntropy(),

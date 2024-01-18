@@ -172,7 +172,7 @@ class MPSSMForCausalLM(MPTPreTrainedSSMModel):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         position_ids: Optional[torch.FloatTensor]=None,
         num_last_tokens: Optional[int]=0, 
-        inference_params: Optional[Dict]=0, 
+        inference_params: Optional[Dict]=None, 
         **kwargs: Any
     ) -> CausalLMOutputWithPast:
 

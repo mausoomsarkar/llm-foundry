@@ -343,7 +343,7 @@ class ComposerMPSSMCausalLM(HuggingFaceModel):
             params -= self.model.transformer.wte.weight.numel()
         params_flops_per_token = 2 * params
         params_flops_per_seq = params_flops_per_token * msl
-        attn_flops_per_seq = (self.model.config.n_layers * 2 * 2 *
+        attn_flops_per_seq = (self.model.config.n_layer * 2 * 2 *
                               (self.model.config.d_model * (msl**2)))
 
         return (params_flops_per_seq + attn_flops_per_seq) * 3 * bs    

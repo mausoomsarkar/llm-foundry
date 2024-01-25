@@ -117,6 +117,44 @@ class MPTMLP(nn.Module):
         return self.down_proj(self.act(self.up_proj(x)))
 
 
+class VEDAGeGLU(MPTMLP):
+    def __init__(
+        self,
+        d_model: int,
+        expansion_ratio: Union[int, float],
+        fc_type: str = 'torch',
+        ffn_hidden_size: Optional[int] = None,
+        act_fn: Callable[[torch.Tensor], torch.Tensor] = _DEFAULT_ACT_FN,
+        device: Optional[str] = None,
+        bias: bool = True,
+    ):
+        super().__init__(
+            d_model=d_model,
+            expansion_ratio=expansion_ratio,
+            fc_type=fc_type,
+            ffn_hidden_size=ffn_hidden_size,
+            act_fn=act_fn,
+            device=device,
+            bias=bias,
+        )
+        self.gate = FC_CLASS_REGISTRY[fc_type](
+            d_model,
+            self.up_proj.out_features,
+            **self.fc_kwargs,
+        )
+        self.gate2 = FC_CLASS_REGISTRY[fc_type](
+            self.up_proj.out_features,
+            self.up_proj.out_features,
+            **self.fc_kwargs,
+        )
+        self.up_proj2 = FC_CLASS_REGISTRY[fc_type](
+            self.up_proj.out_features,
+            self.up_proj.out_features,
+            **self.fc_kwargs,
+        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x2 = self.act(self.up_proj(x)) * self.gate(x)
+        return self.down_proj(self.act(self.up_proj2(x2)) * self.gate2(x2))
 class MPTGLU(MPTMLP):
 
     def __init__(
@@ -151,6 +189,7 @@ class MPTGLU(MPTMLP):
 FFN_CLASS_REGISTRY = {
     'mptmlp': MPTMLP,
     'mptglu': MPTGLU,
+    'vedageglu': VEDAGeGLU,
 }
 
 if te is not None:
@@ -169,10 +208,10 @@ def build_ffn(
     **kwargs: Any,
 ) -> nn.Module:
     ffn_type = kwargs.pop('ffn_type')
-    if ffn_type in ['mptmlp', 'mptglu']:
+    if ffn_type in ['mptmlp', 'mptglu', 'vedageglu']:
         if len(kwargs) > 0:
             raise ValueError(
-                f'MPTMLP (or MPTGLU) got an unexpected keyword argument: {kwargs}'
+                f'MPTMLP (or MPTGLU or VEDAGeGLU) got an unexpected keyword argument: {kwargs}'
             )
         return FFN_CLASS_REGISTRY[ffn_type](
             d_model=d_model,

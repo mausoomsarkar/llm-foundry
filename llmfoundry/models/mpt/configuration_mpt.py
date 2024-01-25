@@ -108,7 +108,7 @@ class MPTConfig(PretrainedConfig):
                     factor (float): Scaling factor to use if using 'linear' or 'dynamic' as rope_scaling.type.
                 kv_n_heads (Optional[int]): For grouped_query_attention only, allow user to specify number of kv heads.
             ffn_config (Dict): A dictionary used to configure the model's ffn module:
-                ffn_type (str): type of ffn to use. Options: mptmlp, mptglu, te_ln_mlp
+                ffn_type (str): type of ffn to use. Options: mptmlp, mptglu, te_ln_mlp, vedageglu
             init_device (str): The device to use for parameter initialization.
             logit_scale (Optional[Union[float, str]]): If not None, scale the logits by this value.
             no_bias (bool): Whether to use bias in all layers.
@@ -298,7 +298,7 @@ class MPTConfig(PretrainedConfig):
                 +
                 'See [#829](https://github.com/mosaicml/llm-foundry/pull/829) for details.'
             )
-        elif self.ffn_config['ffn_type'] in ['mptmlp', 'mptglu']:
+        if self.ffn_config['ffn_type'] in ['mptmlp', 'mptgeglu', 'vedageglu']:
             self.ffn_config['fc_type'] = self.fc_type
         elif self.ffn_config['ffn_type'] == 'te_ln_mlp':
             self.ffn_config['bias'] = not self.no_bias

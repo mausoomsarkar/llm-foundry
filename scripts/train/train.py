@@ -24,6 +24,7 @@ from transformers import PreTrainedTokenizerBase
 
 from llmfoundry import (COMPOSER_MODEL_REGISTRY, ComposerHFCausalLM,
                         MPTForCausalLM)
+from llmfoundry.callbacks import AsyncEval
 from llmfoundry.data.dataloader import build_dataloader
 from llmfoundry.utils.builders import (add_metrics_to_eval_loaders,
                                        build_algorithm, build_callback,
@@ -277,7 +278,8 @@ def main(cfg: DictConfig) -> Trainer:
     logger_configs: Optional[DictConfig] = pop_config(cfg,
                                                       'loggers',
                                                       must_exist=False,
-                                                      default_value=None)
+                                                      default_value=None,
+                                                      convert=True)
     callback_configs: Optional[DictConfig] = pop_config(cfg,
                                                         'callbacks',
                                                         must_exist=False,
@@ -437,13 +439,17 @@ def main(cfg: DictConfig) -> Trainer:
             format=
             f'%(asctime)s: rank{dist.get_global_rank()}[%(process)d][%(threadName)s]: %(levelname)s: %(name)s: %(message)s'
         )
-        logging.getLogger('llmfoundry').setLevel(python_log_level.upper())
+        logging.getLogger('llmfoundry').setLevel(
+            python_log_level.upper())  # Foundry module
+        logging.getLogger(__name__).setLevel(
+            python_log_level.upper())  # Train script
 
     # Initialize context
     init_context = process_init_device(model_config, fsdp_config)
     logged_cfg.update({'fsdp_config': fsdp_config}, merge=True)
 
     # Build tokenizer
+    log.info('Building tokenizer...')
     tokenizer_name = tokenizer_config['name']
     tokenizer_kwargs = tokenizer_config.get('kwargs', {})
     tokenizer = build_tokenizer(tokenizer_name, tokenizer_kwargs)
@@ -505,9 +511,12 @@ def main(cfg: DictConfig) -> Trainer:
 
     # Callbacks
     callbacks: List[Callback] = [
-        build_callback(str(name), callback_cfg)
+        build_callback(str(name), callback_cfg, om.to_container(logged_cfg))
         for name, callback_cfg in callback_configs.items()
     ] if callback_configs else []
+
+    use_async_eval = any(
+        isinstance(callback, AsyncEval) for callback in callbacks)
 
     # Algorithms
     algorithms = [
@@ -529,17 +538,19 @@ def main(cfg: DictConfig) -> Trainer:
     ## Evaluation
     log.info('Building eval loader...')
     eval_icl_seq_len: int = icl_seq_len if icl_seq_len else max_seq_len
+    # TODO: evaluators should not be built at all if use_async_eval is True
+    # This will be fixed when eval_loader support is fully added to AsyncEval
     evaluators, _, eval_gauntlet_callback = build_evaluators(
         eval_loader_config,
-        icl_tasks_config,
-        eval_gauntlet_config,
+        icl_tasks_config if not use_async_eval else None,
+        eval_gauntlet_config if not use_async_eval else None,
         tokenizer=tokenizer,
         device_eval_batch_size=device_eval_batch_size,
         icl_seq_len=eval_icl_seq_len,
         icl_subset_num_batches=icl_subset_num_batches,
     )
 
-    if eval_gauntlet_callback is not None:
+    if eval_gauntlet_callback is not None and not use_async_eval:
         callbacks.append(eval_gauntlet_callback)
 
     # Build Model
@@ -629,6 +640,11 @@ def main(cfg: DictConfig) -> Trainer:
 
 if __name__ == '__main__':
     yaml_path, args_list = sys.argv[1], sys.argv[2:]
+
+    # Disable resolving environment variables through omegaconf.
+    om.clear_resolver('oc.env')
+
+    # Load yaml and cli arguments.
     with open(yaml_path) as f:
         yaml_cfg = om.load(f)
     cli_cfg = om.from_cli(args_list)

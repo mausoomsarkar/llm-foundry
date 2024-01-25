@@ -3,7 +3,9 @@
 
 from llmfoundry.models.hf import (ComposerHFCausalLM, ComposerHFPrefixLM,
                                   ComposerHFT5)
-from llmfoundry.models.inference_api_wrapper import (OpenAICausalLMEvalWrapper,
+from llmfoundry.models.inference_api_wrapper import (FMAPICasualLMEvalWrapper,
+                                                     FMAPIChatAPIEvalWrapper,
+                                                     OpenAICausalLMEvalWrapper,
                                                      OpenAIChatAPIEvalWrapper)
 from llmfoundry.models.mpt import ComposerMPTCausalLM
 from llmfoundry.models.ssm import ComposerMPSSMCausalLM
@@ -13,6 +15,8 @@ COMPOSER_MODEL_REGISTRY = {
     'hf_prefix_lm': ComposerHFPrefixLM,
     'hf_t5': ComposerHFT5,
     'openai_causal_lm': OpenAICausalLMEvalWrapper,
+    'fmapi_causal_lm': FMAPICasualLMEvalWrapper,
     'openai_chat': OpenAIChatAPIEvalWrapper,
-    'mpssm_causal_lm': ComposerMPSSMCausalLM
+    'fmapi_chat': FMAPIChatAPIEvalWrapper,
+    'mpssm_causal_lm': ComposerMPSSMCausalLM,
 }

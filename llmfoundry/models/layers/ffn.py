@@ -108,24 +108,24 @@ class SlimFC(nn.Module):
             self.fc_kwargs['device'] = device
 
         min_features= min(in_features,out_features)
-        self.mix_proj = nn.Conv1d(min_features,
+        mix_proj = nn.Conv1d(min_features,
                                   min_features,
                                   kernel_size=1,
                                   **self.fc_kwargs,
                                 )
         
         
-        self.scale_proj=nn.Conv1d(in_features,
+        scale_proj=nn.Conv1d(in_features,
                                    out_features,
                                    kernel_size=1,
                                    groups=slim_factor,
                                    **self.fc_kwargs,
         )
-        self.proj_0=self.mix_proj
-        self.proj_1=self.scale_proj
+        self.proj_0=mix_proj
+        self.proj_1=scale_proj
         if in_features>out_features:
-            self.proj_0=self.scale_proj
-            self.proj_1=self.mix_proj
+            self.proj_0=scale_proj
+            self.proj_1=mix_proj
         self.proj_1._is_residual = True
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:

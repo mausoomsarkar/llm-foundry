@@ -79,6 +79,61 @@ def resolve_ffn_hidden_size(
     return ffn_hidden_size
 
 
+class SlimFC(nn.Module):
+    def __init__(
+            self,
+            in_features: int,
+            out_features: int,
+            slim_factor: Union[int, float],
+            fc_type: str = 'torch',
+            device: Optional[str] = None,
+            bias: bool=True,
+    ):
+        super().__init__()
+        self.in_features=in_features
+        self.out_features=out_features
+        if in_features%slim_factor==0:
+            raise ValueError(
+                f'`in_features` must be an integral multiple of `slim_factor` ( {in_features=}; {slim_factor=}).'
+            )
+        
+        if out_features%slim_factor==0:
+            raise ValueError(
+                f'`out_features` must be an integral multiple of `slim_factor` ( {out_features=}; {slim_factor=}).'
+            )
+        self.fc_kwargs: dict[str, Any] = {
+            'bias': bias,
+        }
+        if fc_type != 'te':
+            self.fc_kwargs['device'] = device
+
+        min_features= min(in_features,out_features)
+        self.mix_proj = FC_CLASS_REGISTRY[fc_type](
+            min_features,
+            min_features,
+            **self.fc_kwargs,
+        )
+
+        
+        self.scale_proj=nn.Conv1d(in_features,
+                                   out_features,
+                                   kernel_size=1,
+                                   groups=slim_factor,
+                                   **self.fc_kwargs,
+        )
+        self.scale_proj._is_residual = True
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        old_shape=x.shape
+        if self.in_features< self.out_features: 
+            inp=self.mix_proj(x)
+            out=self.scale_proj(inp.view(-1,old_shape[-1],1))
+            return out.view(*old_shape[:-1],-1)
+        else:
+            out=self.scale_proj(x.view(-1,old_shape[-1],1))
+            return self.mix_proj(out.view(*old_shape[:-1],-1))
+        
+
 class MPTMLP(nn.Module):
 
     def __init__(
@@ -117,7 +172,7 @@ class MPTMLP(nn.Module):
         return self.down_proj(self.act(self.up_proj(x)))
 
 
-class VEDAGeGLU(MPTMLP):
+class VEDAGeGLU(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -128,33 +183,29 @@ class VEDAGeGLU(MPTMLP):
         device: Optional[str] = None,
         bias: bool = True,
     ):
-        super().__init__(
-            d_model=d_model,
-            expansion_ratio=expansion_ratio,
-            fc_type=fc_type,
-            ffn_hidden_size=ffn_hidden_size,
-            act_fn=act_fn,
-            device=device,
-            bias=bias,
-        )
-        self.gate = FC_CLASS_REGISTRY[fc_type](
-            d_model,
-            self.up_proj.out_features,
-            **self.fc_kwargs,
-        )
-        self.gate2 = FC_CLASS_REGISTRY[fc_type](
-            self.up_proj.out_features,
-            self.up_proj.out_features,
-            **self.fc_kwargs,
-        )
-        self.up_proj2 = FC_CLASS_REGISTRY[fc_type](
-            self.up_proj.out_features,
-            self.up_proj.out_features,
-            **self.fc_kwargs,
-        )
+        super().__init__()
+        ffn_hidden_size = resolve_ffn_hidden_size(d_model, expansion_ratio,
+                                                  ffn_hidden_size)
+
+        self.up_proj = SlimFC(d_model,
+                              ffn_hidden_size,
+                              expansion_ratio,
+                              fc_type,device,bias)
+        self.act = act_fn
+
+        self.down_proj = SlimFC(ffn_hidden_size, 
+                                d_model, 
+                                expansion_ratio,
+                                fc_type,device,bias)
+        self.gate_proj = SlimFC(d_model,
+                                ffn_hidden_size,
+                                expansion_ratio,
+                                fc_type,device,bias)
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x2 = self.act(self.up_proj(x)) * self.gate(x)
-        return self.down_proj(self.act(self.up_proj2(x2)) * self.gate2(x2))
+        return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
+    
+
 class MPTGLU(MPTMLP):
 
     def __init__(

@@ -87,7 +87,7 @@ def generic_param_init_fn_(
             f'Expected init_div_is_residual to be boolean or numeric, got {init_div_is_residual}'
         )
 
-    if isinstance(module, tuple(set(FC_CLASS_REGISTRY.values()+[nn.Conv1d]))):
+    if isinstance(module, tuple(set(list(FC_CLASS_REGISTRY.values())+[nn.Conv1d]))):
         # Linear
         if hasattr(module, '_fused'):
             fused_init_helper_(module, init_fn_)

@@ -84,7 +84,7 @@ class SlimFC(nn.Module):
             self,
             in_features: int,
             out_features: int,
-            slim_factor: Union[int, float],
+            slim_factor: int,
             fc_type: str = 'torch',
             device: Optional[str] = None,
             bias: bool=True,
@@ -92,12 +92,12 @@ class SlimFC(nn.Module):
         super().__init__()
         self.in_features=in_features
         self.out_features=out_features
-        if in_features%slim_factor==0:
+        if in_features%slim_factor!=0:
             raise ValueError(
                 f'`in_features` must be an integral multiple of `slim_factor` ( {in_features=}; {slim_factor=}).'
             )
         
-        if out_features%slim_factor==0:
+        if out_features%slim_factor!=0:
             raise ValueError(
                 f'`out_features` must be an integral multiple of `slim_factor` ( {out_features=}; {slim_factor=}).'
             )
@@ -108,12 +108,12 @@ class SlimFC(nn.Module):
             self.fc_kwargs['device'] = device
 
         min_features= min(in_features,out_features)
-        self.mix_proj = FC_CLASS_REGISTRY[fc_type](
-            min_features,
-            min_features,
-            **self.fc_kwargs,
-        )
-
+        self.mix_proj = nn.Conv1d(min_features,
+                                  min_features,
+                                  kernel_size=1,
+                                  **self.fc_kwargs,
+                                )
+        
         
         self.scale_proj=nn.Conv1d(in_features,
                                    out_features,
@@ -121,18 +121,19 @@ class SlimFC(nn.Module):
                                    groups=slim_factor,
                                    **self.fc_kwargs,
         )
-        self.scale_proj._is_residual = True
+        self.proj_0=self.mix_proj
+        self.proj_1=self.scale_proj
+        if in_features>out_features:
+            self.proj_0=self.scale_proj
+            self.proj_1=self.mix_proj
+        self.proj_1._is_residual = True
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         old_shape=x.shape
-        if self.in_features< self.out_features: 
-            inp=self.mix_proj(x)
-            out=self.scale_proj(inp.view(-1,old_shape[-1],1))
-            return out.view(*old_shape[:-1],-1)
-        else:
-            out=self.scale_proj(x.view(-1,old_shape[-1],1))
-            return self.mix_proj(out.view(*old_shape[:-1],-1))
-        
+        out=self.proj_1(self.proj_0(x.view(-1,old_shape[-1],1)))
+        return out.view(*old_shape[:-1],-1)
+    
+
 
 class MPTMLP(nn.Module):
 

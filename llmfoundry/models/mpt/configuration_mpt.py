@@ -298,7 +298,7 @@ class MPTConfig(PretrainedConfig):
                 +
                 'See [#829](https://github.com/mosaicml/llm-foundry/pull/829) for details.'
             )
-        if self.ffn_config['ffn_type'] in ['mptmlp', 'mptgeglu', 'vedageglu']:
+        if self.ffn_config['ffn_type'] in ['mptmlp', 'mptglu', 'vedageglu']:
             self.ffn_config['fc_type'] = self.fc_type
         elif self.ffn_config['ffn_type'] == 'te_ln_mlp':
             self.ffn_config['bias'] = not self.no_bias

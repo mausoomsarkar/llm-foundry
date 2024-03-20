@@ -147,10 +147,51 @@ class MPTGLU(MPTMLP):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
 
+class MPTMOE(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        expansion_ratio: Union[int, float],
+        fc_type: str = 'torch',
+        ffn_hidden_size: Optional[int] = None,
+        act_fn: Callable[[torch.Tensor], torch.Tensor] = _DEFAULT_ACT_FN,
+        device: Optional[str] = None,
+        bias: bool = True,
+        num_experts: int=12,
+        num_experts_per_token: int=3
+    ):
+        super().__init__()
+        self.ffns=torch.nn.ModuleList([ MPTGLU(d_model=d_model,
+            expansion_ratio=expansion_ratio,
+            fc_type=fc_type,
+            act_fn=act_fn,
+            ffn_hidden_size=ffn_hidden_size,
+            device=device,
+            bias=bias) for _ in range(num_experts)])
+        self.expert_proj = FC_CLASS_REGISTRY[fc_type](
+            d_model,
+            num_experts,
+            device=device,
+            bias=False
+        )
+        self.num_experts_per_token=num_experts_per_token
+        self.num_experts=num_experts
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        gate_logits = self.expert_proj(x)
+        weights, selected_experts = torch.topk(gate_logits, self.num_experts_per_token)
+        weights = torch.nn.functional.softmax(weights, dim=-1, dtype=torch.float).to(x.dtype)
+        results = torch.zeros_like(x)
+        for i in range(self.num_experts):
+            batch_idx, seq_idx, nth_expert = torch.where(selected_experts == i)
+            results[batch_idx, seq_idx] += weights[batch_idx, seq_idx, nth_expert, None] * self.ffns[i](x[batch_idx, seq_idx])
+            # self.down_proj[i](self.act(self.gate_proj[i](x[batch_idx, seq_idx])) * self.up_proj[i](x[batch_idx, seq_idx]))
+        return results
 
 FFN_CLASS_REGISTRY = {
     'mptmlp': MPTMLP,
     'mptglu': MPTGLU,
+    'mptmoe': MPTMOE,
 }
 
 if te is not None:
@@ -169,7 +210,7 @@ def build_ffn(
     **kwargs: Any,
 ) -> nn.Module:
     ffn_type = kwargs.pop('ffn_type')
-    if ffn_type in ['mptmlp', 'mptglu']:
+    if ffn_type in ['mptmlp', 'mptglu', 'mptmoe']:
         if len(kwargs) > 0:
             raise ValueError(
                 f'MPTMLP (or MPTGLU) got an unexpected keyword argument: {kwargs}'

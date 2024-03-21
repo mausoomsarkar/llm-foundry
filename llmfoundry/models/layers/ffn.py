@@ -209,6 +209,7 @@ def build_moe(
     bias: bool = True,
     **kwargs: Any,    
 )-> nn.Module:
+    _=kwargs.pop('moe')
     moe_num_experts=kwargs.pop('moe_num_experts')
     moe_active_experts=kwargs.pop('moe_active_experts')
     return MOE(

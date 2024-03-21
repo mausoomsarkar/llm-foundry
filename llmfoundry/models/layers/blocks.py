@@ -102,7 +102,7 @@ class MPTBlock(nn.Module):
         if not getattr(FFN_CLASS_REGISTRY[ffn_config['ffn_type']], '_has_norm',
                        False):
             self.norm_2 = norm_class(d_model, device=device)
-        if ffn_config['moe']:
+        if ffn_config.get('moe',False):
             self.ffn=build_moe(d_model=d_model,
                         expansion_ratio=expansion_ratio,
                         device=device,

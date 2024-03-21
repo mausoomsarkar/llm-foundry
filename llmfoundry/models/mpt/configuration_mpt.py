@@ -22,9 +22,6 @@ from llmfoundry.models.layers.ffn import FFN_CLASS_REGISTRY  # type: ignore (see
 
 ffn_config_defaults: Dict = {
     'ffn_type': 'mptmlp',
-    'moe': False,
-    'moe_num_experts': 1,
-    'moe_active_experts': 1,
 }
 
 init_config_defaults: Dict = {

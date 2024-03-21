@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from llmfoundry.models.layers.attention import ATTN_CLASS_REGISTRY
-from llmfoundry.models.layers.ffn import FFN_CLASS_REGISTRY, build_ffn
+from llmfoundry.models.layers.ffn import FFN_CLASS_REGISTRY, build_ffn, build_moe
 from llmfoundry.models.layers.norm import NORM_CLASS_REGISTRY
 
 try:
@@ -102,13 +102,20 @@ class MPTBlock(nn.Module):
         if not getattr(FFN_CLASS_REGISTRY[ffn_config['ffn_type']], '_has_norm',
                        False):
             self.norm_2 = norm_class(d_model, device=device)
-        self.ffn = build_ffn(
-            d_model=d_model,
-            expansion_ratio=expansion_ratio,
-            device=device,
-            bias=not no_bias,
-            **ffn_config,
-        )
+        if ffn_config['moe']:
+            self.ffn=build_moe(d_model=d_model,
+                        expansion_ratio=expansion_ratio,
+                        device=device,
+                        bias=not no_bias,
+                        **ffn_config,)
+        else:
+            self.ffn = build_ffn(
+                d_model=d_model,
+                expansion_ratio=expansion_ratio,
+                device=device,
+                bias=not no_bias,
+                **ffn_config,
+            )
         self.resid_attn_dropout = nn.Dropout(resid_pdrop)
         self.resid_ffn_dropout = nn.Dropout(resid_pdrop)
 

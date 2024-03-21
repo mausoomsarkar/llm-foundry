@@ -147,7 +147,7 @@ class MPTGLU(MPTMLP):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
 
-class MPTMOE(nn.Module):
+class MOE(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -158,16 +158,18 @@ class MPTMOE(nn.Module):
         device: Optional[str] = None,
         bias: bool = True,
         num_experts: int=12,
-        num_experts_per_token: int=3
+        num_experts_per_token: int=3,
+        **kwargs: Any,
     ):
         super().__init__()
-        self.ffns=torch.nn.ModuleList([ MPTGLU(d_model=d_model,
-            expansion_ratio=expansion_ratio,
-            fc_type=fc_type,
-            act_fn=act_fn,
-            ffn_hidden_size=ffn_hidden_size,
-            device=device,
-            bias=bias) for _ in range(num_experts)])
+        self.ffns=torch.nn.ModuleList([ build_ffn(d_model=d_model,
+                                            expansion_ratio=expansion_ratio,
+                                            fc_type=fc_type,
+                                            ffn_hidden_size=ffn_hidden_size,
+                                            ffn_act_fn=act_fn,
+                                            device=device,
+                                            bias=bias,
+                                            **kwargs) for _ in range(num_experts)])
         self.expert_proj = FC_CLASS_REGISTRY[fc_type](
             d_model,
             num_experts,
@@ -191,12 +193,36 @@ class MPTMOE(nn.Module):
 FFN_CLASS_REGISTRY = {
     'mptmlp': MPTMLP,
     'mptglu': MPTGLU,
-    'mptmoe': MPTMOE,
 }
 
 if te is not None:
     te.LayerNormMLP._has_norm = True
     FFN_CLASS_REGISTRY['te_ln_mlp'] = te.LayerNormMLP
+
+def build_moe(
+    d_model: int,
+    expansion_ratio: Union[int, float],
+    fc_type: str = 'torch',
+    ffn_hidden_size: Optional[int] = None,
+    ffn_act_fn: Optional[dict] = None,
+    device: Optional[str] = None,
+    bias: bool = True,
+    **kwargs: Any,    
+)-> nn.Module:
+    moe_num_experts=kwargs.pop('moe_num_experts')
+    moe_active_experts=kwargs.pop('moe_active_experts')
+    return MOE(
+                d_model=d_model,
+                expansion_ratio=expansion_ratio,
+                fc_type=fc_type,
+                act_fn=resolve_ffn_act_fn(ffn_act_fn),
+                ffn_hidden_size=ffn_hidden_size,
+                device=device,
+                bias=bias,
+                num_experts=moe_num_experts,
+                num_experts_per_token=moe_active_experts,
+                **kwargs,
+            )
 
 
 def build_ffn(
@@ -210,7 +236,7 @@ def build_ffn(
     **kwargs: Any,
 ) -> nn.Module:
     ffn_type = kwargs.pop('ffn_type')
-    if ffn_type in ['mptmlp', 'mptglu', 'mptmoe']:
+    if ffn_type in ['mptmlp', 'mptglu']:
         if len(kwargs) > 0:
             raise ValueError(
                 f'MPTMLP (or MPTGLU) got an unexpected keyword argument: {kwargs}'
